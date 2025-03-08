@@ -1,0 +1,1 @@
+- Run discovery without triggering singletons.

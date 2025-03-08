@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<LangVersion>latest</LangVersion>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<UseWindowsForms>True</UseWindowsForms>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'" />
+	<ItemGroup>
+	  <Content Remove="C:\Users\tgreg\.nuget\packages\ivsoftware.winos.mstest.extensions\1.0.3-prerelease\contentFiles\any\net8.0-windows7.0\Images\breaking-on-empty-code-block.png" />
+	  <Content Remove="C:\Users\tgreg\.nuget\packages\ivsoftware.winos.mstest.extensions\1.0.3-prerelease\contentFiles\any\net8.0-windows7.0\Images\templatized-code-snippet-first-look.png" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="IVSoftware.Portable.Threading" Version="1.3.0-preview3" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+		<PackageReference Include="MSTest" Version="3.6.4" />
+		<PackageReference Include="IVSoftware.WinOS.MSTest.Extensions" Version="*-*" />
+		<PackageReference Include="IVSoftware.Portable.Xml.Linq.XBoundObject" Version="*-*" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\WithNotifyOnDescendants\WithNotifyOnDescendants.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="TestModels\RoundTripINPC\" />
+	</ItemGroup>
+</Project>
