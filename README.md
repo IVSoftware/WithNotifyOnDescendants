@@ -1,6 +1,9 @@
+Since you haven't accepted an answer so far, here's something different you could try.
+
 Part of my job description is testing NuGet packages like [XBound Object](https://www.nuget.org/packages/IVSoftware.Portable.Xml.Linq.XBoundObject/1.2.10) which extends `System.Xml.Linq`, providing runtime Tag properties for elements in an XML hierarchy [(see: Source Code on GitHub)](https://github.com/IVSoftware/IVSoftware.Portable.Xml.Linq.XBoundObject.git). Your question presents a good opportunity for a demo solution looking through that lens. Instead of extending `ObservableCollection<T>`, we could leverage `XBoundObject` to make an extension for `object` (we'll call it `WithNotifyOnDescendants`) that improves the recursive discovery that you're already doing. The result is a root `XElement` which is an origin model of the nested object hierarchy to track changes without modifying class structures. To see the current dynamic state of everything below it, simply call `ToString()` on the root element.
 
 And while this extension "could" be applied to `BCollection`, we could even go one better and have your `ClassA` be the root model.
+___
 
 ```
 public class ClassA
@@ -95,6 +98,7 @@ ___
 
 Your question (as I understand it) isn’t just about making it work, but also about how to debug it when it doesn’t. After adding the first `ClassB` to `BCollection` simply call `A.OriginModel.ToString()` to view the result.
 
+___
 ```xml
 <model name=""(Origin)ClassA"" statusnod=""NoAvailableChangedEvents"" instance=""[WithNotifyOnDescendants.Proto.MSTest.TestModels.ClassA]"" notifyinfo=""[NotifyInfo]"">
   <member name=""TotalCost"" statusnod=""NoObservableMemberProperties"" pi=""[System.Int32]"" />
