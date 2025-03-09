@@ -14,6 +14,7 @@ using System.Xml.Linq;
 using IVSoftware.Portable.Threading;
 using WithNotifyOnDescendants.Proto.MSTest.TestModels;
 using IVSoftware.Portable.Xml.Linq;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace WithNotifyOnDescendants.Proto.MSTest;
 
@@ -494,49 +495,78 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
         actual.ToClipboard();
         actual.ToClipboardAssert();
         { }
+        expected = @" 
+<model instance=""[ClassA]"">
+  <member name=""TotalCost"" />
+  <member name=""BCollection"" instance=""[ObservableCollection]"">
+    <model instance=""[ClassB]"">
+      <member name=""C"" instance=""[ClassC]"">
+        <member name=""Cost"" />
+        <member name=""Currency"" />
+      </member>
+    </model>
+    <member name=""Count"" />
+  </member>
+</model>";
 
-        XElement localDiscoverModel(object o)
+        Assert.AreEqual(
+            expected.NormalizeResult(),
+            actual.NormalizeResult(),
+            "Expecting values to match."
+        );
+        XElement localDiscoverModel(object instance, HashSet<object> visited = null!)
         {
-            XElement model = new XElement("model");
-            model.SetBoundAttributeValue(o, name: "instance");
+            visited = visited ?? new HashSet<object>();
+            XElement model = new XElement(nameof(model));
+            model.SetBoundAttributeValue(instance, name: nameof(instance));
             localRunRecursiveDiscovery(model);
+
             return model;
+
             void localRunRecursiveDiscovery(XElement currentElement)
             {
-                Debug.WriteLine($"{currentElement.ToString()} {(currentElement.Attribute("instance") as XBoundAttribute)?.Tag?.GetType()?.Name}");
-                if ((currentElement.Attribute("instance") as XBoundAttribute)?.Tag is object o)
+#if DEBUG
+                var originModel = currentElement.AncestorsAndSelf().Last();
+                { }
+#endif
+
+                object? instance;
+                instance = (currentElement.Attribute(nameof(instance)) as XBoundAttribute)?.Tag;
+                if (instance is not null && visited.Add(instance))
                 {
-                    var pis =
-                        o.GetType().GetProperties()
-                        .Where(_ => _.GetCustomAttribute<IgnoreNODAttribute>() is null)
+                    var pis = instance.GetType().GetProperties()
+                        .Where(pi =>
+                            pi.GetCustomAttribute<IgnoreNODAttribute>() is null &&
+                            pi.GetIndexParameters().Length == 0)
                         .ToArray();
+
                     foreach (var pi in pis)
                     {
-                        Debug.WriteLine(pi.PropertyType.Name);
-                        XElement member = new("member", new XAttribute("name", pi.Name));
-                        if(pi.GetValue(o) is object instance)
+                        XElement member;
+                        member = new XElement(
+                            nameof(member),
+                            new XAttribute(nameof(pi.Name).ToLower(), pi.Name)
+                        );
+                        currentElement.Add(member);
+                        if (pi.GetValue(instance) is object childInstance)
                         {
-                            if (o is string) continue;
-                            if (o is Enum) continue;
-                            if (o is ValueType) continue;
-                            member.SetBoundAttributeValue(instance, nameof(instance));
-                            if (instance is IEnumerable collection)
+                            if (childInstance is string ||
+                                childInstance is Enum ||
+                                childInstance is ValueType)
+                                continue;
+                            member.SetBoundAttributeValue(childInstance, nameof(instance));
+
+                            if (childInstance is IEnumerable collection)
                             {
                                 foreach (var item in collection)
                                 {
-                                    member.Add(localDiscoverModel(item));
+                                    member.Add(localDiscoverModel(item, visited));
                                 }
                             }
-                            else 
-                            { }
-                        };
-                        currentElement.Add(member);
-                        currentElement = member;
-                        localRunRecursiveDiscovery(currentElement);
+                            localRunRecursiveDiscovery(member);
+                        }
                     }
                 }
-                else 
-                { }
             }
         }
     }
