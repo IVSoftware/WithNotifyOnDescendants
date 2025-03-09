@@ -486,7 +486,7 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
     {
         ClassA classA = new();
         Enumerable
-            .Range(0, 1)
+            .Range(0, 3)
             .ToList()
             .ForEach(_ => classA.BCollection.Add(new()));
         XElement originModel = localDiscoverModel(classA);
@@ -499,6 +499,18 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
 <model instance=""[ClassA]"">
   <member name=""TotalCost"" />
   <member name=""BCollection"" instance=""[ObservableCollection]"">
+    <model instance=""[ClassB]"">
+      <member name=""C"" instance=""[ClassC]"">
+        <member name=""Cost"" />
+        <member name=""Currency"" />
+      </member>
+    </model>
+    <model instance=""[ClassB]"">
+      <member name=""C"" instance=""[ClassC]"">
+        <member name=""Cost"" />
+        <member name=""Currency"" />
+      </member>
+    </model>
     <model instance=""[ClassB]"">
       <member name=""C"" instance=""[ClassC]"">
         <member name=""Cost"" />
