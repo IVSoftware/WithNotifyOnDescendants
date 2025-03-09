@@ -13,6 +13,7 @@ using System.Reflection.Emit;
 using System.Xml.Linq;
 using IVSoftware.Portable.Threading;
 using WithNotifyOnDescendants.Proto.MSTest.TestModels;
+using IVSoftware.Portable.Xml.Linq;
 
 namespace WithNotifyOnDescendants.Proto.MSTest;
 
@@ -36,12 +37,12 @@ public class TestClass_SO
     Queue<SenderEventPair> eventsCC = new();
     Queue<SenderEventPair> eventsXO = new();
     Queue<SenderEventPair> eventsOA = new();
-    void clearQueues(ClearQueue clearQueue = ClearQueue.PropertyChangedEvents | ClearQueue.NotifyCollectionChangedEvents) 
-    { 
-        if(clearQueue.HasFlag(ClearQueue.PropertyChangedEvents)) eventsPC.Clear();
+    void clearQueues(ClearQueue clearQueue = ClearQueue.PropertyChangedEvents | ClearQueue.NotifyCollectionChangedEvents)
+    {
+        if (clearQueue.HasFlag(ClearQueue.PropertyChangedEvents)) eventsPC.Clear();
         if (clearQueue.HasFlag(ClearQueue.NotifyCollectionChangedEvents)) eventsCC.Clear();
         if (clearQueue.HasFlag(ClearQueue.XObjectChangeEvents)) eventsXO.Clear();
-        if (clearQueue.HasFlag(ClearQueue.OnAwaitedEvents)) eventsOA.Clear(); 
+        if (clearQueue.HasFlag(ClearQueue.OnAwaitedEvents)) eventsOA.Clear();
     }
     Random rando = new Random(1);
     private void OnAwaited(object? sender, AwaitedEventArgs e)
@@ -477,5 +478,66 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
         }
 
         #endregion S U B T E S T S
+    }
+
+    [TestMethod]
+    public void IterationBasics()
+    {
+        ClassA classA = new();
+        Enumerable
+            .Range(0, 1)
+            .ToList()
+            .ForEach(_ => classA.BCollection.Add(new()));
+        XElement originModel = localDiscoverModel(classA);
+        actual = originModel.ToString();
+
+        actual.ToClipboard();
+        actual.ToClipboardAssert();
+        { }
+
+        XElement localDiscoverModel(object o)
+        {
+            XElement model = new XElement("model");
+            model.SetBoundAttributeValue(o, name: "instance");
+            localRunRecursiveDiscovery(model);
+            return model;
+            void localRunRecursiveDiscovery(XElement currentElement)
+            {
+                Debug.WriteLine($"{currentElement.ToString()} {(currentElement.Attribute("instance") as XBoundAttribute)?.Tag?.GetType()?.Name}");
+                if ((currentElement.Attribute("instance") as XBoundAttribute)?.Tag is object o)
+                {
+                    var pis =
+                        o.GetType().GetProperties()
+                        .Where(_ => _.GetCustomAttribute<IgnoreNODAttribute>() is null)
+                        .ToArray();
+                    foreach (var pi in pis)
+                    {
+                        Debug.WriteLine(pi.PropertyType.Name);
+                        XElement member = new("member", new XAttribute("name", pi.Name));
+                        if(pi.GetValue(o) is object instance)
+                        {
+                            if (o is string) continue;
+                            if (o is Enum) continue;
+                            if (o is ValueType) continue;
+                            member.SetBoundAttributeValue(instance, nameof(instance));
+                            if (instance is IEnumerable collection)
+                            {
+                                foreach (var item in collection)
+                                {
+                                    member.Add(localDiscoverModel(item));
+                                }
+                            }
+                            else 
+                            { }
+                        };
+                        currentElement.Add(member);
+                        currentElement = member;
+                        localRunRecursiveDiscovery(currentElement);
+                    }
+                }
+                else 
+                { }
+            }
+        }
     }
 }
