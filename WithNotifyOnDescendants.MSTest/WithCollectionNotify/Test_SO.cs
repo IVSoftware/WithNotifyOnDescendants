@@ -494,12 +494,11 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
         XElement originModel = new XElement("model");
         localDiscoverModel(classA, originModel);
 
-        XElement localDiscoverModel(object instance, XElement model, HashSet<object> visited = null!)
+        void localDiscoverModel(object instance, XElement model, HashSet<object> visited = null!)
         {
             visited = visited ?? new HashSet<object>();
             model.SetBoundAttributeValue(instance, name: nameof(instance));
             localRunRecursiveDiscovery(model);
-            return model;
 
             void localRunRecursiveDiscovery(XElement currentElement)
             {
@@ -527,7 +526,9 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
                             {
                                 foreach (var item in collection)
                                 {
-                                    member.Add(localDiscoverModel(item, new XElement("model"), visited));
+                                    var childModel = new XElement("model");
+                                    localDiscoverModel(item, childModel, visited);
+                                    member.Add(childModel);
                                 }
                             }
                             localRunRecursiveDiscovery(member);
