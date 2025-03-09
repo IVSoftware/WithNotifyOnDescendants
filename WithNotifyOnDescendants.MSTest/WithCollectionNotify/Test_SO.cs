@@ -122,6 +122,11 @@ public class TestClass_SO
         // - Further property changes on the removed instance do not trigger PropertyChanged events.
         subtestRemoveLastItemAndVerifyUnsubscribe();
         // EXPECT
+        // - Iterates through all descendants of A.OriginModel that contain ClassC.
+        // - Computes the total cost by summing up the Cost property of each ClassC instance.
+        // - Validates that the expected total cost is 73905.
+        subtestTryIteratingForClassC();
+        // EXPECT
         // - All items in BCollection are retrieved and then removed using Clear().
         // - The model should reflect the empty state of BCollection.
         // - Multiple unsubscribe events should be triggered for each removed instance.
@@ -217,7 +222,6 @@ public class TestClass_SO
                 actual.NormalizeResult(),
                 "Expecting property changed event for Cost."
             );
-
             // Is A.TotalCost updated?
             Assert.AreEqual(
                 8148,
@@ -381,6 +385,30 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
             clearQueues(ClearQueue.All);
             remove.C.Cost = rando.Next(Int16.MaxValue);
             Assert.AreEqual(0, eventsPC.Count, "Expecting successful unsubscribe");
+        }
+
+        // EXPECT
+        // - Iterates through all descendants of A.OriginModel that contain ClassC.
+        // - Computes the total cost by summing up the Cost property of each ClassC instance.
+        // - Validates that the expected total cost is 73905.
+        void subtestTryIteratingForClassC()
+        {
+            var totalCost = 0;
+            // Long form
+            foreach (XElement desc in A.OriginModel.Descendants().Where(_ => _.Has<ClassC>()))
+            {
+                totalCost += desc.To<ClassC>().Cost;
+            }
+            Assert.AreEqual(73905, totalCost);
+
+            // Short form
+            totalCost =
+                A
+                .OriginModel
+                .Descendants()
+                .Where(_ => _.Has<ClassC>())
+                .Sum(_ => _.To<ClassC>().Cost);
+            Assert.AreEqual(73905, totalCost);
         }
 
         // EXPECT
