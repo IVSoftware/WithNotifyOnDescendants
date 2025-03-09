@@ -15,6 +15,7 @@ using IVSoftware.Portable.Threading;
 using WithNotifyOnDescendants.Proto.MSTest.TestModels;
 using IVSoftware.Portable.Xml.Linq;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
+using System.Xaml.Permissions;
 
 namespace WithNotifyOnDescendants.Proto.MSTest;
 
@@ -489,7 +490,54 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
             .Range(0, 3)
             .ToList()
             .ForEach(_ => classA.BCollection.Add(new()));
-        XElement originModel = localDiscoverModel(classA);
+
+        XElement originModel = new XElement("model");
+        localDiscoverModel(classA, originModel);
+
+        XElement localDiscoverModel(object instance, XElement model, HashSet<object> visited = null!)
+        {
+            visited = visited ?? new HashSet<object>();
+            model.SetBoundAttributeValue(instance, name: nameof(instance));
+            localRunRecursiveDiscovery(model);
+            return model;
+
+            void localRunRecursiveDiscovery(XElement currentElement)
+            {
+                object? instance;
+                instance = (currentElement.Attribute(nameof(instance)) as XBoundAttribute)?.Tag;
+                if (instance is not null && visited.Add(instance))
+                {
+                    var pis = instance.GetType().GetProperties()
+                        .Where(pi =>
+                            pi.GetCustomAttribute<IgnoreNODAttribute>() is null &&
+                            pi.GetIndexParameters().Length == 0);
+                    foreach (var pi in pis.ToArray())
+                    {
+                        XElement member = new XElement(nameof(member));
+                        member.SetAttributeValue(nameof(pi.Name).ToLower(), pi.Name);
+                        currentElement.Add(member);
+                        if (pi.GetValue(instance) is object childInstance)
+                        {
+                            if (childInstance is string ||
+                                childInstance is Enum ||
+                                childInstance is ValueType)
+                                continue;
+                            member.SetBoundAttributeValue(childInstance, nameof(instance));
+                            if (childInstance is IEnumerable collection)
+                            {
+                                foreach (var item in collection)
+                                {
+                                    member.Add(localDiscoverModel(item, new XElement("model"), visited));
+                                }
+                            }
+                            localRunRecursiveDiscovery(member);
+                        }
+                    }
+                }
+            }
+        }
+
+
         actual = originModel.ToString();
 
         actual.ToClipboard();
@@ -526,60 +574,5 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
             actual.NormalizeResult(),
             "Expecting values to match."
         );
-        XElement localDiscoverModel(object instance, HashSet<object> visited = null!)
-        {
-            visited = visited ?? new HashSet<object>();
-            XElement model = new XElement(nameof(model));
-            model.SetBoundAttributeValue(instance, name: nameof(instance));
-            localRunRecursiveDiscovery(model);
-
-            return model;
-
-            void localRunRecursiveDiscovery(XElement currentElement)
-            {
-#if DEBUG
-                var originModel = currentElement.AncestorsAndSelf().Last();
-                { }
-#endif
-
-                object? instance;
-                instance = (currentElement.Attribute(nameof(instance)) as XBoundAttribute)?.Tag;
-                if (instance is not null && visited.Add(instance))
-                {
-                    var pis = instance.GetType().GetProperties()
-                        .Where(pi =>
-                            pi.GetCustomAttribute<IgnoreNODAttribute>() is null &&
-                            pi.GetIndexParameters().Length == 0)
-                        .ToArray();
-
-                    foreach (var pi in pis)
-                    {
-                        XElement member;
-                        member = new XElement(
-                            nameof(member),
-                            new XAttribute(nameof(pi.Name).ToLower(), pi.Name)
-                        );
-                        currentElement.Add(member);
-                        if (pi.GetValue(instance) is object childInstance)
-                        {
-                            if (childInstance is string ||
-                                childInstance is Enum ||
-                                childInstance is ValueType)
-                                continue;
-                            member.SetBoundAttributeValue(childInstance, nameof(instance));
-
-                            if (childInstance is IEnumerable collection)
-                            {
-                                foreach (var item in collection)
-                                {
-                                    member.Add(localDiscoverModel(item, visited));
-                                }
-                            }
-                            localRunRecursiveDiscovery(member);
-                        }
-                    }
-                }
-            }
-        }
     }
 }

@@ -215,7 +215,7 @@ namespace WithNotifyOnDescendants.Proto
                     : null;
                 Debug
                     .WriteLineIf(
-                        true,
+                        false,
                         $"[250306.A {sender?.GetType().Name}.{e.ObjectChange} {(e.IsChanging ? "Changing" : "Changed")}] {xtarget?.ToShallow().SortAttributes<SortOrderNOD>().ToString()}");
 
                 if (xtarget is not null)
