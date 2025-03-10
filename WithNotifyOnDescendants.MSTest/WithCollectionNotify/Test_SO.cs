@@ -490,58 +490,13 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
             .ToList()
             .ForEach(_ => classA.BCollection.Add(new()));
 
-        XElement originModel = new XElement("model");
-        localDiscoverModel(classA, originModel);
-
-        void localDiscoverModel(object instance, XElement model, HashSet<object> visited = null!)
-        {
-            visited = visited ?? new HashSet<object>();
-            model.SetBoundAttributeValue(instance, name: nameof(instance));
-            localRunRecursiveDiscovery(model);
-
-            void localRunRecursiveDiscovery(XElement currentElement)
-            {
-                object? instance;
-                instance = (currentElement.Attribute(nameof(instance)) as XBoundAttribute)?.Tag;
-                if (instance is not null && visited.Add(instance))
-                {
-                    var pis = instance.GetType().GetProperties()
-                        .Where(pi =>
-                            pi.GetCustomAttribute<IgnoreNODAttribute>() is null &&
-                            pi.GetIndexParameters().Length == 0);
-                    foreach (var pi in pis.ToArray())
-                    {
-                        XElement member = new XElement(nameof(member));
-                        member.SetAttributeValue(nameof(pi.Name).ToLower(), pi.Name);
-                        currentElement.Add(member);
-                        if (pi.GetValue(instance) is object childInstance)
-                        {
-                            if (childInstance is string ||
-                                childInstance is Enum ||
-                                childInstance is ValueType)
-                                continue;
-                            member.SetBoundAttributeValue(childInstance, nameof(instance));
-                            if (childInstance is IEnumerable collection)
-                            {
-                                foreach (var item in collection)
-                                {
-                                    var childModel = new XElement("model");
-                                    localDiscoverModel(item, childModel, visited);
-                                    member.Add(childModel);
-                                }
-                            }
-                            localRunRecursiveDiscovery(member);
-                        }
-                    }
-                }
-            }
-        }
+        XElement originModel =
+            classA
+            .RunDiscovery()
+            .ToArray()
+            .First();
 
         actual = originModel.ToString();
-
-        actual.ToClipboard();
-        actual.ToClipboardAssert();
-        { }
         expected = @" 
 <model instance=""[ClassA]"">
   <member name=""TotalCost"" />
