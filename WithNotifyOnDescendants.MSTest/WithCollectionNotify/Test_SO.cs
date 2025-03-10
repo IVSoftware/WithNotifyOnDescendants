@@ -1,18 +1,14 @@
-using CollectionsMSTest.OBC;
-using WithNotifyOnDescendants.Proto;
-using static IVSoftware.Portable.Threading.Extensions;
+using IVSoftware.Portable.Threading;
+using IVSoftware.Portable.Xml.Linq;
 using IVSoftware.Portable.Xml.Linq.XBoundObject;
 using IVSoftware.WinOS.MSTest.Extensions;
 using System.Collections;
-using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Reflection;
-using System.Reflection.Emit;
 using System.Xml.Linq;
-using IVSoftware.Portable.Threading;
 using WithNotifyOnDescendants.Proto.MSTest.TestModels;
+using static IVSoftware.Portable.Threading.Extensions;
 
 namespace WithNotifyOnDescendants.Proto.MSTest;
 
@@ -36,12 +32,12 @@ public class TestClass_SO
     Queue<SenderEventPair> eventsCC = new();
     Queue<SenderEventPair> eventsXO = new();
     Queue<SenderEventPair> eventsOA = new();
-    void clearQueues(ClearQueue clearQueue = ClearQueue.PropertyChangedEvents | ClearQueue.NotifyCollectionChangedEvents) 
-    { 
-        if(clearQueue.HasFlag(ClearQueue.PropertyChangedEvents)) eventsPC.Clear();
+    void clearQueues(ClearQueue clearQueue = ClearQueue.PropertyChangedEvents | ClearQueue.NotifyCollectionChangedEvents)
+    {
+        if (clearQueue.HasFlag(ClearQueue.PropertyChangedEvents)) eventsPC.Clear();
         if (clearQueue.HasFlag(ClearQueue.NotifyCollectionChangedEvents)) eventsCC.Clear();
         if (clearQueue.HasFlag(ClearQueue.XObjectChangeEvents)) eventsXO.Clear();
-        if (clearQueue.HasFlag(ClearQueue.OnAwaitedEvents)) eventsOA.Clear(); 
+        if (clearQueue.HasFlag(ClearQueue.OnAwaitedEvents)) eventsOA.Clear();
     }
     Random rando = new Random(1);
     private void OnAwaited(object? sender, AwaitedEventArgs e)
@@ -115,6 +111,11 @@ public class TestClass_SO
         // - Updating the Cost property in each new ClassC instance triggers five cost updates.
         // - The cumulative TotalCost value should be updated accordingly.
         subtestAdd3xClassBInstanceWithZeroInitialCost();
+        // EXPECT
+        // - Iterates through all descendants of A.OriginModel that contain ClassC.
+        // - Computes the total cost by summing up the Cost property of each ClassC instance.
+        // - Validates that the expected total cost is 73905.
+        subtestTryIteratingForClassC();
         // EXPECT
         // - The last item in BCollection is retrieved and removed.
         // - A NotifyCollectionChanged event with action `Remove` is triggered.
@@ -217,7 +218,6 @@ public class TestClass_SO
                 actual.NormalizeResult(),
                 "Expecting property changed event for Cost."
             );
-
             // Is A.TotalCost updated?
             Assert.AreEqual(
                 8148,
@@ -384,6 +384,30 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
         }
 
         // EXPECT
+        // - Iterates through all descendants of A.OriginModel that contain ClassC.
+        // - Computes the total cost by summing up the Cost property of each ClassC instance.
+        // - Validates that the expected total cost is 73905.
+        void subtestTryIteratingForClassC()
+        {
+            var totalCost = 0;
+            // Long form
+            foreach (XElement desc in A.OriginModel.Descendants().Where(_ => _.Has<ClassC>()))
+            {
+                totalCost += desc.To<ClassC>().Cost;
+            }
+            Assert.AreEqual(73905, totalCost);
+
+            // Short form
+            totalCost =
+                A
+                .OriginModel
+                .Descendants()
+                .Where(_ => _.Has<ClassC>())
+                .Sum(_ => _.To<ClassC>().Cost);
+            Assert.AreEqual(73905, totalCost);
+        }
+
+        // EXPECT
         // - All items in BCollection are retrieved and then removed using Clear().
         // - The model should reflect the empty state of BCollection.
         // - Multiple unsubscribe events should be triggered for each removed instance.
@@ -449,5 +473,240 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
         }
 
         #endregion S U B T E S T S
+    }
+
+
+    [TestMethod]
+    public void IterationBasics()
+    {
+        ClassA classA = new();
+        // Add 3 ClassB instances to classA;
+        Enumerable
+            .Range(0, 3)
+            .ToList()
+            .ForEach(_ => classA.BCollection.Add(new()));
+        // EXPECT
+        // - XML Model where only Reference types are bound to instance attribute.
+        subtestGenerateBareMetalModel();
+        subtestDiscoveryEnumerator();
+
+        subtestIncludeValueTypeInstances();
+        void subtestIncludeValueTypeInstances() { }
+        {
+            var originModel =
+                classA
+                .RunDiscovery(new DiscoveryContext
+                {
+                    Options = DiscoveryOption.IncludeValueTypeInstances,
+                })
+                .ToArray()
+                .First();
+
+            actual = originModel.ToString();
+            actual.ToClipboard();
+            actual.ToClipboardAssert("Expecting msg");
+            expected = @" 
+<model instance=""[ClassA]"">
+  <member name=""TotalCost"" instance=""[Int32]"" />
+  <member name=""BCollection"" instance=""[ObservableCollection]"">
+    <model instance=""[ClassB]"">
+      <member name=""C"" instance=""[ClassC]"">
+        <member name=""Cost"" instance=""[Int32]"" />
+        <member name=""Currency"" instance=""[Int32]"" />
+      </member>
+    </model>
+    <model instance=""[ClassB]"">
+      <member name=""C"" instance=""[ClassC]"">
+        <member name=""Cost"" instance=""[Int32]"" />
+        <member name=""Currency"" instance=""[Int32]"" />
+      </member>
+    </model>
+    <model instance=""[ClassB]"">
+      <member name=""C"" instance=""[ClassC]"">
+        <member name=""Cost"" instance=""[Int32]"" />
+        <member name=""Currency"" instance=""[Int32]"" />
+      </member>
+    </model>
+    <member name=""Count"" instance=""[Int32]"" />
+  </member>
+</model>";
+
+            Assert.AreEqual(
+                expected.NormalizeResult(),
+                actual.NormalizeResult(),
+                "Expecting msg"
+            );
+        }
+
+        #region S U B T E S T S
+        void subtestGenerateBareMetalModel()
+        {
+            XElement originModel =
+                classA
+                .RunDiscovery()
+                .ToArray()
+                .First();
+
+            actual = originModel.ToString();
+            expected = @" 
+<model instance=""[ClassA]"">
+  <member name=""TotalCost"" />
+  <member name=""BCollection"" instance=""[ObservableCollection]"">
+    <model instance=""[ClassB]"">
+      <member name=""C"" instance=""[ClassC]"">
+        <member name=""Cost"" />
+        <member name=""Currency"" />
+      </member>
+    </model>
+    <model instance=""[ClassB]"">
+      <member name=""C"" instance=""[ClassC]"">
+        <member name=""Cost"" />
+        <member name=""Currency"" />
+      </member>
+    </model>
+    <model instance=""[ClassB]"">
+      <member name=""C"" instance=""[ClassC]"">
+        <member name=""Cost"" />
+        <member name=""Currency"" />
+      </member>
+    </model>
+    <member name=""Count"" />
+  </member>
+</model>";
+
+            Assert.AreEqual(
+                expected.NormalizeResult(),
+                actual.NormalizeResult(),
+                "Expecting values to match."
+            );
+            originModel.RemoveAll();
+        }
+        void subtestDiscoveryEnumerator()
+        {
+            DiscoveryContext context = new();
+            var builder = new List<string>();
+            foreach (var xel in classA.RunDiscovery(context))
+            {
+                string tabs = string.Join(string.Empty, Enumerable.Repeat("  ", xel.Ancestors().Count()));
+                builder.Add($"{tabs}{xel.ToShallow()}");
+            }
+
+            actual = context.OriginModel.ToString();
+            Assert.AreEqual(
+                expected.NormalizeResult(),
+                actual.NormalizeResult(),
+                "Expecting values to match."
+            );
+
+            var joined = string.Join(Environment.NewLine, builder);
+            actual = joined;
+            expected = @" 
+<model instance=""[ClassA]"" />
+  <member name=""TotalCost"" />
+  <member name=""BCollection"" instance=""[ObservableCollection]"" />
+    <model instance=""[ClassB]"" />
+      <member name=""C"" instance=""[ClassC]"" />
+        <member name=""Cost"" />
+        <member name=""Currency"" />
+    <model instance=""[ClassB]"" />
+      <member name=""C"" instance=""[ClassC]"" />
+        <member name=""Cost"" />
+        <member name=""Currency"" />
+    <model instance=""[ClassB]"" />
+      <member name=""C"" instance=""[ClassC]"" />
+        <member name=""Cost"" />
+        <member name=""Currency"" />
+    <member name=""Count"" />";
+
+            Assert.AreEqual(
+                expected.NormalizeResult(),
+                actual.NormalizeResult(),
+                "Expecting each element has yielded a shallow representation."
+            );
+        }
+        #endregion S U B T E S T S
+    }
+}
+[Flags]
+public enum DiscoveryOption
+{
+    IncludeValueTypeInstances = 0x01,
+}
+
+public delegate void PropertyChangedDelegate(object sender, PropertyChangedEventArgs e);
+public delegate void NotifyCollectionChangedDelegate(object sender, NotifyCollectionChangedEventArgs e);
+public delegate void XObjectChangeDelegate(object sender, XObjectChangeEventArgs e);
+public class DiscoveryContext
+{
+    public XElement OriginModel { get; init; } = new XElement("model");
+    public PropertyChangedDelegate? PropertyChangedDelegate { get; init; } = null;
+    public NotifyCollectionChangedDelegate? NotifyCollectionChangedDelegate { get; init; } = null;
+    public XObjectChangeDelegate? XObjectChangeDelegate { get; init; } = null;
+
+    public DiscoveryOption Options { get; init; } = 0;
+}
+public static partial class Extensions
+{
+    public static IEnumerable<XElement> RunDiscovery(this object @this, DiscoveryContext? context = null)
+    {
+        XElement model = context?.OriginModel ?? new XElement(nameof(model));
+        localDiscoverModel(@this, model);
+        foreach (var xel in model.DescendantsAndSelf())
+        {
+            yield return xel;
+        }
+
+        void localDiscoverModel(object instance, XElement model, HashSet<object> visited = null!)
+        {
+            visited = visited ?? new HashSet<object>();
+            model.SetBoundAttributeValue(instance, name: nameof(instance));
+            localRunRecursiveDiscovery(model);
+
+            void localRunRecursiveDiscovery(XElement currentElement)
+            {
+                object? instance;
+                instance = (currentElement.Attribute(nameof(instance)) as XBoundAttribute)?.Tag;
+                if (instance is not null && visited.Add(instance))
+                {
+                    var pis = instance.GetType().GetProperties()
+                        .Where(pi =>
+                            pi.GetCustomAttribute<IgnoreNODAttribute>() is null &&
+                            pi.GetIndexParameters().Length == 0);
+                    foreach (var pi in pis.ToArray())
+                    {
+                        XElement member = new XElement(nameof(member));
+                        member.SetAttributeValue(nameof(pi.Name).ToLower(), pi.Name);
+                        currentElement.Add(member);
+                        if (pi.GetValue(instance) is object childInstance)
+                        {
+                            if (childInstance is string ||
+                                childInstance is Enum ||
+                                childInstance is ValueType)
+                            {
+                                if (context?.Options.HasFlag(DiscoveryOption.IncludeValueTypeInstances) == true)
+                                {
+                                    member.SetBoundAttributeValue(childInstance, nameof(instance));
+                                }
+                                continue;
+                            }
+                            else
+                            {
+                                member.SetBoundAttributeValue(childInstance, nameof(instance));
+                                if (childInstance is IEnumerable collection)
+                                {
+                                    foreach (var item in collection)
+                                    {
+                                        var childModel = new XElement("model");
+                                        localDiscoverModel(item, childModel, visited);
+                                        member.Add(childModel);
+                                    }
+                                }
+                                localRunRecursiveDiscovery(member);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
