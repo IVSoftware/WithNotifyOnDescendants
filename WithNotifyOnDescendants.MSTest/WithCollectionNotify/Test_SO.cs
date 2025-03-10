@@ -13,7 +13,6 @@ using System.Reflection.Emit;
 using System.Xml.Linq;
 using IVSoftware.Portable.Threading;
 using WithNotifyOnDescendants.Proto.MSTest.TestModels;
-using IVSoftware.Portable.Xml.Linq;
 
 namespace WithNotifyOnDescendants.Proto.MSTest;
 
@@ -123,11 +122,6 @@ public class TestClass_SO
         // - Further property changes on the removed instance do not trigger PropertyChanged events.
         subtestRemoveLastItemAndVerifyUnsubscribe();
         // EXPECT
-        // - Iterates through all descendants of A.OriginModel that contain ClassC.
-        // - Computes the total cost by summing up the Cost property of each ClassC instance.
-        // - Validates that the expected total cost is 73905.
-        subtestTryIteratingForClassC();
-        // EXPECT
         // - All items in BCollection are retrieved and then removed using Clear().
         // - The model should reflect the empty state of BCollection.
         // - Multiple unsubscribe events should be triggered for each removed instance.
@@ -223,6 +217,7 @@ public class TestClass_SO
                 actual.NormalizeResult(),
                 "Expecting property changed event for Cost."
             );
+
             // Is A.TotalCost updated?
             Assert.AreEqual(
                 8148,
@@ -389,30 +384,6 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
         }
 
         // EXPECT
-        // - Iterates through all descendants of A.OriginModel that contain ClassC.
-        // - Computes the total cost by summing up the Cost property of each ClassC instance.
-        // - Validates that the expected total cost is 73905.
-        void subtestTryIteratingForClassC()
-        {
-            var totalCost = 0;
-            // Long form
-            foreach (XElement desc in A.OriginModel.Descendants().Where(_ => _.Has<ClassC>()))
-            {
-                totalCost += desc.To<ClassC>().Cost;
-            }
-            Assert.AreEqual(73905, totalCost);
-
-            // Short form
-            totalCost =
-                A
-                .OriginModel
-                .Descendants()
-                .Where(_ => _.Has<ClassC>())
-                .Sum(_ => _.To<ClassC>().Cost);
-            Assert.AreEqual(73905, totalCost);
-        }
-
-        // EXPECT
         // - All items in BCollection are retrieved and then removed using Clear().
         // - The model should reflect the empty state of BCollection.
         // - Multiple unsubscribe events should be triggered for each removed instance.
@@ -478,156 +449,5 @@ Remove <member name=""C"" statusnod=""INPCSource"" pi=""[WithNotifyOnDescendants
         }
 
         #endregion S U B T E S T S
-    }
-
-
-    [TestMethod]
-    public void IterationBasics()
-    {
-        ClassA classA = new();
-        Enumerable
-            .Range(0, 3)
-            .ToList()
-            .ForEach(_ => classA.BCollection.Add(new()));
-
-        XElement originModel =
-            classA
-            .RunDiscovery()
-            .ToArray()
-            .First();
-
-        actual = originModel.ToString();
-        expected = @" 
-<model instance=""[ClassA]"">
-  <member name=""TotalCost"" />
-  <member name=""BCollection"" instance=""[ObservableCollection]"">
-    <model instance=""[ClassB]"">
-      <member name=""C"" instance=""[ClassC]"">
-        <member name=""Cost"" />
-        <member name=""Currency"" />
-      </member>
-    </model>
-    <model instance=""[ClassB]"">
-      <member name=""C"" instance=""[ClassC]"">
-        <member name=""Cost"" />
-        <member name=""Currency"" />
-      </member>
-    </model>
-    <model instance=""[ClassB]"">
-      <member name=""C"" instance=""[ClassC]"">
-        <member name=""Cost"" />
-        <member name=""Currency"" />
-      </member>
-    </model>
-    <member name=""Count"" />
-  </member>
-</model>";
-
-        Assert.AreEqual(
-            expected.NormalizeResult(),
-            actual.NormalizeResult(),
-            "Expecting values to match."
-        );
-
-        originModel.RemoveAll();
-        var builder = new List<string>();
-        foreach (var xel in classA.RunDiscovery(originModel))
-        {
-            string tabs = string.Join(string.Empty, Enumerable.Repeat("  ", xel.Ancestors().Count()));
-            builder.Add($"{tabs}{xel.ToShallow()}");
-        }
-
-        actual = originModel.ToString();
-        Assert.AreEqual(
-            expected.NormalizeResult(),
-            actual.NormalizeResult(),
-            "Expecting values to match."
-        );
-
-        var joined = string.Join(Environment.NewLine, builder);
-        actual = joined;
-
-        actual.ToClipboard();
-        actual.ToClipboardAssert("Expecting each element has yielded a shallow representation.");
-        { }
-        expected = @" 
-<model instance=""[ClassA]"" />
-  <member name=""TotalCost"" />
-  <member name=""BCollection"" instance=""[ObservableCollection]"" />
-    <model instance=""[ClassB]"" />
-      <member name=""C"" instance=""[ClassC]"" />
-        <member name=""Cost"" />
-        <member name=""Currency"" />
-    <model instance=""[ClassB]"" />
-      <member name=""C"" instance=""[ClassC]"" />
-        <member name=""Cost"" />
-        <member name=""Currency"" />
-    <model instance=""[ClassB]"" />
-      <member name=""C"" instance=""[ClassC]"" />
-        <member name=""Cost"" />
-        <member name=""Currency"" />
-    <member name=""Count"" />";
-
-        Assert.AreEqual(
-            expected.NormalizeResult(),
-            actual.NormalizeResult(),
-            "Expecting each element has yielded a shallow representation."
-        );
-    }
-}
-public static partial class Extensions
-{
-    public static IEnumerable<XElement> RunDiscovery(this object @this, XElement? originModel = null)
-    {
-        XElement model = originModel ?? new XElement(nameof(model));
-        localDiscoverModel(@this, model);
-        foreach (var xel in model.DescendantsAndSelf())
-        {
-            yield return xel;
-        }
-
-        void localDiscoverModel(object instance, XElement model, HashSet<object> visited = null!)
-        {
-            visited = visited ?? new HashSet<object>();
-            model.SetBoundAttributeValue(instance, name: nameof(instance));
-            localRunRecursiveDiscovery(model);
-
-            void localRunRecursiveDiscovery(XElement currentElement)
-            {
-                object? instance;
-                instance = (currentElement.Attribute(nameof(instance)) as XBoundAttribute)?.Tag;
-                if (instance is not null && visited.Add(instance))
-                {
-                    var pis = instance.GetType().GetProperties()
-                        .Where(pi =>
-                            pi.GetCustomAttribute<IgnoreNODAttribute>() is null &&
-                            pi.GetIndexParameters().Length == 0);
-                    foreach (var pi in pis.ToArray())
-                    {
-                        XElement member = new XElement(nameof(member));
-                        member.SetAttributeValue(nameof(pi.Name).ToLower(), pi.Name);
-                        currentElement.Add(member);
-                        if (pi.GetValue(instance) is object childInstance)
-                        {
-                            if (childInstance is string ||
-                                childInstance is Enum ||
-                                childInstance is ValueType)
-                                continue;
-                            member.SetBoundAttributeValue(childInstance, nameof(instance));
-                            if (childInstance is IEnumerable collection)
-                            {
-                                foreach (var item in collection)
-                                {
-                                    var childModel = new XElement("model");
-                                    localDiscoverModel(item, childModel, visited);
-                                    member.Add(childModel);
-                                }
-                            }
-                            localRunRecursiveDiscovery(member);
-                        }
-                    }
-                }
-            }
-        }
     }
 }

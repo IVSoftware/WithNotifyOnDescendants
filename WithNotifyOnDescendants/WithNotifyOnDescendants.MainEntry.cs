@@ -59,7 +59,7 @@ namespace WithNotifyOnDescendants.Proto
             {
                 // Allow recursion only for types that might host other INPCs.
                 if(currentInstance.IsEnumOrValueTypeOrString())
-                {   // Note that the runtime type differs from the declared type (e.g. 'object')
+                {   // Note that the runtime type and the declared type (e.g. 'object')
                     if( model.To<PropertyInfo>() is { } pi &&
                         !Equals(type, pi.PropertyType) )
                     {
