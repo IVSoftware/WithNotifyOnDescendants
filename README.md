@@ -1,75 +1,47 @@
-Part of my job description is testing NuGet packages like [XBound Object](https://www.nuget.org/packages/IVSoftware.Portable.Xml.Linq.XBoundObject/1.2.10) which provides runtime Tag properties for elements in an XML hierarchy [(see: Source Code on GitHub)](https://github.com/IVSoftware/IVSoftware.Portable.Xml.Linq.XBoundObject.git). Your question presents a good opportunity for a demo solution looking through that lens. Instead of extending ObservableCollection<T>, we can leverage `XBoundObject` to make an extension for `object` (we'll call it `WithNotifyOnDescendants`) that improves the recursive discovery that you're already doing. The result is a root `XElement` which is an origin model of the nested object hierarchy to track changes without modifying class structures. To see the current dynamic state of everything below it, simply call `ToString()` on the root element.
+Since you haven't accepted an answer so far, here's something different you could try.
 
-And while this extension "could" be applied to `BCollection`, we could go one better and have your `ClassA` be the root model.
+Part of my job description is testing NuGet packages like [XBound Object](https://www.nuget.org/packages/IVSoftware.Portable.Xml.Linq.XBoundObject/1.2.10) which extends `System.Xml.Linq`, providing one or more runtime Tag properties (attached as attributes) for elements in an XML hierarchy (see: [Source Code on GitHub)](https://github.com/IVSoftware/IVSoftware.Portable.Xml.Linq.XBoundObject.git). Your question presents a good opportunity for a demo solution looking through that lens. Instead of extending `ObservableCollection<T>`, we could leverage `XBoundObject` to make an extension for `object` (we'll call it `WithNotifyOnDescendants`) that improves the recursive discovery that you're already doing. The result is a root `XElement` which is an origin model of the nested object hierarchy to track changes without modifying class structures. To see the current dynamic state of everything below it, simply call `ToString()` on the root element.
+
+And while this extension "could" be applied to `BCollection`, this code snippet does one better and has `ClassA` be the root model. In effect, that makes it `FullyObservableClassA` even though we're not calling it that.
+
+___
 
 ```
 public class ClassA
 {
     public ClassA()
     {
-        // ===========================================================================================
+        // ================
         // INITIALIZE
-        // "The idea is to have a collection of objects that not only notify changes
-        //  to their own properties but also notify changes in their nested objects."
+        // "The idea is to have a collection of objects that 
+        // not only notify changes to their own properties 
+        // but also notify changes in their nested objects."
+
         this
             .WithNotifyOnDescendants(   // The "Extension"
             out XElement originModel,   // The root node of the generated model
             OnPropertyChanged,          // Who to call when PropertyChanged events are raised.
             OnCollectionChanged         // Who to call when NotifyClooectionChanged events are raised.
         );
+
         // We 'could' just apply the extension to BCollection (making it a 'FullyObservableCollection')
         // but it's even more powerful to go one level up from that.
-        // ===========================================================================================
+        // ================
         OriginModel = originModel;
     }
     public int TotalCost { get; private set; } = 0;
     private void RefreshTotalCost(SenderEventPair sep)
     {
         TotalCost = BCollection.Sum(_ => _.C.Cost);
-
-        // MS Test Reporting only:
-        switch (sep.e)
-        {
-            case PropertyChangedEventArgs:
-                switch (sep.PropertyName)
-                {
-                    case nameof(ClassC.Cost):
-                        // The event model is navigable!
-                        if (sep.SenderModel?.AncestorOfType<ClassB>() is { } b )
-                        {
-                            localSendDebugTrackingMessageToMSTest(b);
-                        }
-                        break;
-                }
-                break;
-            case NotifyCollectionChangedEventArgs:
-                sep
-                .NotifyCollectionChangedEventArgs?
-                .NewItems?
-                .OfType<ClassB>()
-                .Where(_=>_.C.Cost != 0)
-                .ToList()
-                .ForEach(b =>localSendDebugTrackingMessageToMSTest(b));
-                break;
-        }
-        void localSendDebugTrackingMessageToMSTest(ClassB b)
-        {
-            this.OnAwaited(new AwaitedEventArgs(
-                    args: $"Item at index {BCollection.IndexOf(b)} shows a new cost value of {b.C.Cost}."));
-                this.OnAwaited(new AwaitedEventArgs(
-                    args: $"Total of C.Cost {TotalCost}"));
-        }
     }
     public ObservableCollection<ClassB> BCollection { get; } = new();
 
-    [IgnoreNOD]
+    [IgnoreNOD] // Exempt this property from NotifyOnDemand discovery.
     public XElement OriginModel { get; }
 
-    // Forward this for testing purposes
     private void OnCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
     {
         RefreshTotalCost(new SenderEventPair(sender,e));
-        CollectionChanged?.Invoke(sender, e);
     }
     protected virtual void OnPropertyChanged(object sender, PropertyChangedEventArgs e)
     {
@@ -89,11 +61,64 @@ public class ClassA
     public event NotifyCollectionChangedEventHandler? CollectionChanged;
 }
 ```
+
+___
+
+**XBoundObject Basics**
+
+___
+
+- For a given `ClassA classA` and `XElement model`, the reference to `ClassA` can be bound by calling:
+
+`model.SetBoundAttributeObject(classA);`
+
+---
+
+- To retrieve the instance from the `XElement`, use the `To<T>()` extension.
+
+```
+if(model.To<ClassA> is ClassA classA)
+{
+    Debug.WriteLine(${Total Cost: {classA.TotalCost}"");   
+}
+```
+
+___
+
+- To detect the existence of an instance, interface, or action, use the `Has<T>()` extension.
+
+```
+// Because of the structure of the OriginModel, The A instance now has access 
+// to ClassC instances directly, without going through BCollection.C to
+// obtain them (though you could still do it that way of course.)
+void subtestTryIteratingForClassC()
+{
+    var totalCost = 0;
+    // Long form
+    foreach (XElement desc in A.OriginModel.Descendants().Where(_ => _.Has<ClassC>()))
+    {
+        totalCost += desc.To<ClassC>().Cost;
+    }
+    Assert.AreEqual(73905, totalCost);
+
+    // Short form
+    totalCost =
+        A
+        .OriginModel
+        .Descendants()
+        .Where(_ => _.Has<ClassC>())
+        .Sum(_ => _.To<ClassC>().Cost);
+    Assert.AreEqual(73905, totalCost);
+}
+```
+
 ___
 
 **Inspecting the Origin Model**
 
-Your question (as I understand it) isn’t just about making it work, but also about how to debug it when it doesn’t. After adding the first `ClassB` to `BCollection` simply call `A.OriginModel.ToString()` to view the result.
+Your question (as I understand it) isn’t just about making it work, but also about how to debug it when it doesn’t. After adding the first `ClassB` to `BCollection` simply call `A.OriginModel.ToString()` to view the XML model as text and determine exactly what's going on in the full nester hierarchy.
+
+___
 
 ```xml
 <model name=""(Origin)ClassA"" statusnod=""NoAvailableChangedEvents"" instance=""[WithNotifyOnDescendants.Proto.MSTest.TestModels.ClassA]"" notifyinfo=""[NotifyInfo]"">
@@ -114,7 +139,7 @@ ___
 
 **Example Code for a `WithNotifyOnDescendants` Extension**
 
-There's more code than will fit here, but it's really not that much longer than the "first pass enumerator" in my previous answer ([view `WithNotifyOnDescendants.MainEntry.cs` on GitHub](https://github.com/IVSoftware/WithNotifyOnDescendants/blob/master/WithNotifyOnDescendants/WithNotifyOnDescendants.MainEntry.cs)). The scheme in your original post is somewhat limited by only performing discovery when `BCollection` changes. This goes beyond that, and responds to `INotifyPropertyChanged` sources that come and go as _member properties of nested classes._ It also takes into account some of the edge cases that could result from doing this.
+There's more code than will fit here (see: [WithNotifyOnDescendants.MainEntry.cs](https://github.com/IVSoftware/WithNotifyOnDescendants/blob/master/WithNotifyOnDescendants/WithNotifyOnDescendants.MainEntry.cs)) but it's really not that much longer than the "first pass enumerator" in my previous answer . The scheme in your original post is somewhat limited by only performing discovery when `BCollection` changes. This goes beyond that, and responds to `INotifyPropertyChanged` sources that come and go as _member properties of nested classes._ It also takes into account some of the edge cases that could result from doing this.
 
 ##### Edge Cases
 
@@ -125,6 +150,7 @@ There's more code than will fit here, but it's really not that much longer than 
 - What if an arbitrary `ClassB` has a member that is another `ObservableCollection<T>`?
 
 ___
+
 **Unit Testing**
 
 JonasH's answer contains an excellent comment.
@@ -132,7 +158,6 @@ JonasH's answer contains an excellent comment.
 > Regardless of the approach I would recommend writing a fair bit of unit tests to confirm the desired behavior in various kinds of circumstances, since it is quite easy to make mistakes when writing code like this.
 
 I agree. If you want to look into doing that, there are several unit tests in the repo. One of the highlights is a `TestMethod` designed to test your scenario specifically. Please refer to the online source code for details.
-
 
 ```
 /// <summary>
